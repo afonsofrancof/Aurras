@@ -21,7 +21,7 @@ int main(int argc, char **argv)
     memset(str,0,sizeof(str));
     char read_id[140];
     memset(read_id,0,sizeof(read_id));
-    snprintf(str,sizeof(str),"%d",(int)getppid());
+    snprintf(str,sizeof(str),"%d",(int)getpid());
     puts(str);
 
     /* Pedir coneccao ao servidor */
@@ -35,11 +35,11 @@ int main(int argc, char **argv)
 
     strcat(Server_Client_ID,str);
     int fd_server_client_id = open(Server_Client_ID, O_RDONLY);
-    if(fd_server_client_id==-1) printf("error accessing fd_server_client_id");
+    if(fd_server_client_id==-1) {printf("Error accessing private Server_Client_FIFO.Server out of memory or Max users connected.\n");return -1;}
 
     strcat(Client_Server_ID,str);
     int fd_client_server_id = open(Client_Server_ID, O_WRONLY);
-    if(fd_client_server_id==-1) printf("error accessing fd_client_server_id");
+    if(fd_client_server_id==-1) {printf("Error accessing private Client_Server_FIFO.Server out of memory or Max users connected.\n");return -1;}
 
     if (read(fd_server_client_id, read_id, sizeof(read_id)) < 0) {
         perror("Erro na Leitura:"); //error check
