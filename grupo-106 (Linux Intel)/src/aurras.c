@@ -47,6 +47,44 @@ int main(int argc, char **argv)
     }
     printf("\nServer Response: %s\n", read_id);
 
+    //Checking what the user wants to do
+
+    if(argc<=1) {
+        printf("No argument provided");
+        return -1;
+    }else {
+        if (strcmp(argv[1], "transform") == 0) {//argv[5][2]
+            char command[BUFSIZ];
+            for(int i = 1;argv[i];i++){
+                strcat(command,argv[i]);
+                strcat(command," ");
+            }
+            printf("\n\n%s\n\n",command);
+            if (argc < 5) {
+                printf("Not enough arguments in program call");
+                return -1;
+            } else {
+                if(write(fd_client_server_id,command,sizeof(command))<0){
+                    perror("Write Error:"); //error check
+                    exit(-1);
+                }
+            }
+        } else
+        if (strcmp(argv[1], "status") == 0) {
+            if (argc > 2) {
+                printf("Too many arguments in program call");
+                return -1;
+            } else {
+                if(write(fd_client_server_id,argv[1],sizeof(argv[1]))<0){
+                    perror("Write Error:"); //error check
+                    exit(-1);
+                }
+            }
+        }
+    }
+
+
+
     close(fd_client_server_main);
     close(fd_server_client_id);
 

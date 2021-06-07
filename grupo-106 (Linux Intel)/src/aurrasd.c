@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdlib.h>
 
 #define Client_Server_Main  "../etc/client_server_main_fifo"
 
