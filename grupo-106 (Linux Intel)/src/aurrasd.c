@@ -10,13 +10,12 @@
 #define Client_Server_Main  "../etc/client_server_main_fifo"
 
 
-int main()
-{
+int main() {
 
 
     int fd_client_server_main;
-    char *Client_Server_ID  = "../tmp/client_server_";
-    char Server_Client_ID[BUFSIZ]  = "../tmp/server_client_";
+    char Client_Server_ID[BUFSIZ] = "../tmp/client_server_";
+    char Server_Client_ID[BUFSIZ] = "../tmp/server_client_";
 
 
     /* Criar o pipe principal */
@@ -37,8 +36,8 @@ int main()
                 char path_client_server_id[BUFSIZ];
                 strcat(strcpy(path_client_server_id, Client_Server_ID), buf);
 
-                if (mkfifo(path_server_client_id, 0666) == -1) printf("Erro creating FIFO");
-                if (mkfifo(path_client_server_id, 0666) == -1) printf("Erro creating FIFO");
+                if (mkfifo(path_server_client_id, 0666) == -1) printf("Erro creating FIFO\n");
+                if (mkfifo(path_client_server_id, 0666) == -1) printf("Erro creating FIFO\n");
 
                 int fd_server_client_id = open(path_server_client_id, O_WRONLY);
                 int fd_client_server_id = open(path_client_server_id, O_RDONLY);
@@ -46,59 +45,69 @@ int main()
                 char *con = "Connection Accepted";
                 if (write(fd_server_client_id, con, 21) < 0) {
                     perror("Erro na escrita:");
-                    _exit(-1);
+                    //_exit(-1);
                 }
                 char response[BUFSIZ];
+                //memset(response,0,sizeof(response));
                 ssize_t response_size;
                 response_size = read(fd_client_server_id, response, sizeof(response));
+                response[strlen(response)] = '\0';//
                 if (response_size > 0) {
                     char *response_array[100];
                     memset(response_array, 0, sizeof(response_array));
                     char *p = strtok(response, " ");
                     int response_c = 0;
                     while (p != NULL) {
-                        response_array[response_c++] = p;
+                        strcpy(response_array[response_c++], p);
                         p = strtok(NULL, " ");
                     }
-                    printf("\n%d\n", response_c);
-                    if(response_c<=0) {
-                        printf("No argument provided");
-                    }
-                    else {
+
+                    if (response_c <= 0) {
+                        printf("No argument provided\n");
+                        _exit(0);
+                    } else {
                         if (strcmp(response_array[0], "transform") == 0) {//argv[5][2]
-                            printf("Command transform recieved1\n");
                             if (response_c < 4) {
-                                printf("Not enough arguments in program call");
+                                printf("Not enough arguments in program call\n");
                             }
-                            printf("Command transform recieved");
-                        }
-                        else{
+                            char message[] = "Command transform recieved from user ";
+                            strcat(message, buf);
+                            printf("%s\n", message);
+                        } else {
                             if (strcmp(response_array[0], "status") == 0) {
                                 if (response_c > 1) {
-                                    printf("Too many arguments in program call");
-                                }else printf("Command status recieved");
+                                    printf("Too many arguments in program call\n");
+                                } else {
+
+                                    char message[] = "Command status recieved from user ";
+                                    strcat(message, buf);
+                                    printf("%s\n", message);
+                                }
                             }
                         }
                     }
                 }
-
-
 
                 close(fd_server_client_id);
                 close(fd_client_server_id);
 
                 unlink(path_server_client_id);
                 unlink(path_client_server_id);
-                memset(buf, 0, sizeof(buf));
+                //memset(buf, 0, sizeof(buf));
                 _exit(0);
             }
-            else {
-                wait(&status);
-                sleep(4);
-                printf("bomdia");
-                }
+
 
         }
+        //break;
     }
+    int status;
+    wait(&status);
+    sleep(3);
+    printf("bomdia");
+
+
+    close(fd_client_server_main);
+    unlink(Client_Server_Main);
     return 0;
 }
