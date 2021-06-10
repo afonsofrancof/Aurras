@@ -15,7 +15,6 @@ int main(int argc, char **argv) {
     char Server_Client_ID[BUFSIZ] = "../tmp/server_client_";
 
     int fd_client_server_main;
-
     char str[140];
     memset(str, 0, sizeof(str));
     char read_id[140];
