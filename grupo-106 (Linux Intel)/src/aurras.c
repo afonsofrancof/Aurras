@@ -87,11 +87,10 @@ int main(int argc, char **argv) {
         }
     }
 
-
     close(fd_client_server_main);
     close(fd_server_client_id);
     close(fd_client_server_id);
-    _exit(0);
+
 
     /* remove the FIFO */
 

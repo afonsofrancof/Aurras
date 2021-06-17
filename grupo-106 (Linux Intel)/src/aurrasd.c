@@ -9,12 +9,13 @@
 #include <sys/mman.h>
 
 #define tamanho_filtros_array 10
+#define MAX_FILTROS_USER 10
 #define Client_Server_Main "../etc/client_server_main_fifo"
 
 //Variaveis globais a serem alteradas pela main e pelo SIGHandler.
 char *array_conf[30];
-int max_filters[10] = {0};
-int filtros_em_uso[10] = {0};
+int max_filters[tamanho_filtros_array] = {0};
+int filtros_em_uso[tamanho_filtros_array] = {0};
 int n_filtros;
 typedef struct espera {
     pid_t pid;
@@ -46,19 +47,15 @@ int parse_string_to_string_array(char *string, char **str_array, char *delimit) 
 }
 
 void sigHandler(int signum) {
-    printf("Process finished, looking for processes to unpause\n");
     while (main_queue) {
         int filtro_cheio = 0;
         for (int i = 0; i < n_filtros; i++) {
-            if (filtros_em_uso[i] + main_queue->filtros[i] > max_filters[i]) filtro_cheio = 1;
+            if (filtros_em_uso[i] + main_queue->filtros[i] > max_filters[i]) return;
         }
-        if (filtro_cheio == 0) {
-            for (int i = 0; i < n_filtros; i++) {
-                filtros_em_uso[i] += main_queue->filtros[i];
-            }
-            kill(main_queue->pid, SIGALRM);
-        }
+
+        kill(main_queue->pid, SIGALRM);
         main_queue = main_queue->prox;
+
     }
     /* for (int i = 0; i < n_filtros; i++) {
          filtros_em_uso[i] += main_queue
@@ -95,9 +92,6 @@ int main(int argc, char **argv) {
     for (int i = 2, u = 0; u < n_filtros; i = i + 3, u++) {
         max_filters[u] = (int) strtol(array_conf[i], NULL, 10);
     }
-    for (int i = 0; i < n_filtros; i++) {
-        printf("%d\n", max_filters[i]);
-    }
     //printf("%u\n", size_array_conf);
     /*for (int i = 0; i < size_array_conf; i = i + 3) {
         printf("%i - %s %s %d\n", i, array_conf[i], array_conf[i + 1], (int) strtol(array_conf[i + 2], NULL, 10));
@@ -105,8 +99,8 @@ int main(int argc, char **argv) {
 
 
     // Parte 1 - Diretoria temporaria para os pipes com nome (FIFO) para comunicacao privada entre cliente e servidor.
-    char Client_Server_ID[BUFSIZ] = "../tmp/client_server_";
-    char Server_Client_ID[BUFSIZ] = "../tmp/server_client_";
+    char Client_Server_ID[200] = "../tmp/client_server_";
+    char Server_Client_ID[200] = "../tmp/server_client_";
 
     // Criar o pipe principal.
     mkfifo(Client_Server_Main, 0666);
@@ -143,6 +137,7 @@ int main(int argc, char **argv) {
                     int main_n_filtros = (int) strtol(main_response[1], NULL, 10);
                     for (int i = 0; i < main_n_filtros; i++) {
                         filtros_em_uso[i] += (int) strtol(main_response[i + 2], NULL, 10);
+                        printf("%d\n", filtros_em_uso[i]);
                     }
                 } else if (strcmp(buf, "status") != 0) {
                     main_queue->pid = (pid_t) strtol(main_response[0], NULL, 10);
@@ -161,6 +156,7 @@ int main(int argc, char **argv) {
 
                 pid_t pid;
                 //Nesta parte criamos o main Filho. Este filho ira representar um cliente.
+
                 if ((pid = fork()) == 0) {
 
                     /*
@@ -188,15 +184,15 @@ int main(int argc, char **argv) {
                     }
 
                     //Agora que a coneccao foi sucedida, o server vai ler o request do cliente na private pipe.
-                    char response[BUFSIZ] = {0};
+                    char response[200] = {0};
                     ssize_t response_size;
                     response_size = read(fd_client_server_id, response, sizeof(response));
-                    printf("%s\n", response);
+
                     //Verificamos denovo se foi lida alguma coisa do private pipe , e se sim, avancamos.
                     if (response_size > 0) {
 
                         ////Dar parse ao comando do user para um array de char pointers.
-                        char *response_array[30] = {0};
+                        char *response_array[MAX_FILTROS_USER + 10] = {0};
                         char response_copy_for_pipe[sizeof(response)];
                         strcpy(response_copy_for_pipe, response);
                         int response_c = parse_string_to_string_array(response, response_array, " \0");
@@ -229,9 +225,6 @@ int main(int argc, char **argv) {
                             }
                         }
 
-                        /*for (int i = 0; i < n_filtros; i++) {
-                            printf("CLIENTE - %d | MAX - %d\n", filtros_cliente[i], max_filters[i]);
-                        }*/
                         //Dar match no comando do user a um dos comandos disponiveis
                         if (response_c <= 0) {
                             printf("No argument provided\n");
@@ -241,13 +234,16 @@ int main(int argc, char **argv) {
                                 if (response_c < 4) {
                                     printf("Not enough arguments in program call\n");
                                 } else {
-                                    const int n_comandos = response_c - 3;
+                                    int n_comandos = response_c - 3;
                                     printf("comando transform\n");
                                     //Adicionar o filho que vai ficar a espera na queue
                                     int continua = 1;
                                     if (main_queue != NULL) { continua = 0; }
                                     for (int i = 0; i < n_filtros; i++) {
+                                        printf("Uso - %d | Cliente %d | Max %d \n", filtros_em_uso[i],
+                                               filtros_cliente[i], max_filters[i]);
                                         if (filtros_em_uso[i] + filtros_cliente[i] > max_filters[i]) continua = 0;
+
                                     }
                                     if (continua == 0) {
                                         char send_parent_string[100] = {0};
@@ -263,8 +259,9 @@ int main(int argc, char **argv) {
                                         }
                                         write(fd_client_server_main, send_parent_string, sizeof(send_parent_string));
                                         pause();
+                                        printf("OIOIOIOIOIO\n");
                                     }
-                                    char adicionar[] = "adicionar;";
+                                    char adicionar[30 + tamanho_filtros_array * 2] = "adicionar;";
                                     char tamanho[3] = {0};
                                     sprintf(tamanho, "%d;", n_filtros);
                                     strcat(adicionar, tamanho);
@@ -273,9 +270,11 @@ int main(int argc, char **argv) {
                                         snprintf(tmp, sizeof(tmp), "%d;", filtros_cliente[i]);
                                         strcat(adicionar, tmp);
                                     }
+                                    int fd_add = open(Client_Server_Main, O_WRONLY);
+                                    ssize_t size_write = write(fd_add, adicionar, sizeof(adicionar));
+                                    close(fd_add);
                                     printf("ADD = %s\n", adicionar);
-
-                                    write(fd_client_server_main, adicionar, sizeof(adicionar));
+                                    printf("%ld\n", size_write);
                                     /*
                                      * Quando para de ficar a espera dizer ao sigHandler2 para eleminar o primeiro da
                                      * lista que de certeza que é este filho porque quando esta cheio so 1 pode executar
@@ -283,10 +282,11 @@ int main(int argc, char **argv) {
                                      * unpaused ao mesmo tempo , vao ser 3 removidos da queue também.
                                     */
 
-                                    char path[sizeof(argv[2])];
+                                    char path[BUFSIZ] = {0};
                                     strcat(path, argv[2]);
                                     strcat(path, "/"); //MUDAR
-                                    int pd[n_comandos - 1][2];
+                                    //puts(path);
+
                                     if (n_comandos == 1) {
                                         if (fork() == 0) {
 
@@ -298,16 +298,16 @@ int main(int argc, char **argv) {
                                             close(fd_w);
                                             strcat(path, response_array[3]);
                                             execl(path, response_array[3], NULL);
+                                            _exit(0);
                                         }
                                     } else {
-                                        if (pipe(pd[0]) == -1) {
-                                            printf("Pipe Error\n");
-                                            _exit(-1);
-                                        }
+                                        int pd[n_comandos][2];
                                         for (int i = 0; i < n_comandos; i++) {
-
+                                            if (pipe(pd[i]) == -1) {
+                                                printf("Pipe Error\n");
+                                                _exit(-1);
+                                            }
                                             if (i == 0) {
-                                                printf("%s\n", response_array[3]);
                                                 if (fork() == 0) {
                                                     close(pd[i][0]);
                                                     int fd = open(response_array[1], O_RDONLY);
@@ -317,56 +317,63 @@ int main(int argc, char **argv) {
                                                     close(pd[i][1]);
                                                     //FALTA IR BUSCAR AO ARGV O FILTER PATH
                                                     strcat(path, response_array[3]);
-                                                    execlp(path, path, NULL);
-                                                    _exit(0);
+                                                    execl(path, path, (char *) NULL);
+                                                    _exit(12);
+                                                } else {
+                                                    close(pd[i][1]);
                                                 }
                                             } else if (i == n_comandos - 1) {
-                                                printf("%s\n", response_array[response_c - 1]);
                                                 if (fork() == 0) {
-                                                    close(pd[i - 1][1]);
+                                                    close(pd[i][0]);
+                                                    close(pd[i][1]);
                                                     int fd = open(response_array[2], O_CREAT | O_WRONLY, 0666);
+                                                    printf("entrou no ultimo caso\n");
                                                     dup2(fd, 1);
                                                     close(fd);
                                                     dup2(pd[i - 1][0], 0);
                                                     close(pd[i - 1][0]);
                                                     strcat(path, response_array[response_c - 1]);
-                                                    execlp(path, path, NULL);
-                                                    _exit(0);
+                                                    execl(path, path, (char *) NULL);
+                                                    _exit(12);
+                                                } else {
+                                                    close(pd[i][0]);
+                                                    close(pd[i][1]);
+                                                    close(pd[i - 1][0]);
+                                                    int status;
+                                                    wait(&status);
                                                 }
 
                                             } else {
-                                                if (pipe(pd[i]) == -1) {
-                                                    printf("Pipe Error\n");
-                                                    _exit(-1);
-                                                }
                                                 if (fork() == 0) {
-                                                    dup2(pd[i - 1][0], 0);
-                                                    close(pd[i - 1][0]);
-                                                    dup2(pd[i][1], 1);
-                                                    close(pd[i][1]);
-                                                    close(pd[i - 1][1]);
                                                     close(pd[i][0]);
+                                                    dup2(pd[i - 1][0], 0);
+                                                    dup2(pd[i][1], 1);
+                                                    close(pd[i - 1][0]);
+                                                    close(pd[i][1]);
                                                     strcat(path, response_array[i + 3]);
-                                                    execlp(path, path, NULL);
-                                                    _exit(0);
+                                                    execl(path, path, (char *) NULL);
+                                                    _exit(12);
+                                                } else {
+                                                    close(pd[i][1]);
+                                                    close(pd[i - 1][0]);
                                                 }
                                             }
 
                                         }
+                                        for (int i = 0; i < n_comandos; i++) {
+                                            int status;
+                                            wait(&status);
+                                            printf("%d\n", WEXITSTATUS(status));
+                                        }
+
+
                                     }
-
-                                    for (int i = 0; i < n_comandos; i++) {
-                                        int status;
-                                        wait(&status);
-                                    }
-
-
                                 }
                             } else {
                                 printf("Comando não reconhecido");
                             }
                         }
-                        char remover[] = "remover;";
+                        char remover[30 + tamanho_filtros_array * 2] = "remover;";
                         char tamanho[3] = {0};
                         sprintf(tamanho, "%d;", n_filtros);
                         strcat(remover, tamanho);
@@ -374,9 +381,12 @@ int main(int argc, char **argv) {
                             char tmp[3] = {0};
                             sprintf(tmp, "%d;", filtros_cliente[i]);
                             strcat(remover, tmp);
-                            strcat(remover, ";");
                         }
-                        write(fd_client_server_main, remover, sizeof(remover));
+                        int fd_remove = open(Client_Server_Main, O_WRONLY);
+                        ssize_t size_write = write(fd_remove, remover, sizeof(remover));
+                        close(fd_remove);
+
+                        printf("REMOVE = %s\n", remover);
                     }
 
                     close(fd_server_client_id);
