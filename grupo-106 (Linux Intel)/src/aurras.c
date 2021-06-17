@@ -15,62 +15,30 @@ int main(int argc, char **argv) {
     char Server_Client_ID[BUFSIZ] = "../tmp/server_client_";
 
     int fd_client_server_main;
-    char str[140];
-    memset(str, 0, sizeof(str));
-    char read_id[140];
-    memset(read_id, 0, sizeof(read_id));
-    snprintf(str, sizeof(str), "%d", (int) getpid());
-    puts(str);
 
-    /* Pedir coneccao ao servidor */
     fd_client_server_main = open(Client_Server_Main, O_WRONLY);
     if (fd_client_server_main == -1) printf("error accessing fd_client_server_main");
-    if (write(fd_client_server_main, str, sizeof(str)) < 0) {
-        perror("Write:");//print error
-        exit(-1);
+
+    /* Pedir coneccao ao servidor e mandar o pedido*/
+    char command[BUFSIZ];
+    memset(command, 0, sizeof(command));
+    snprintf(command, sizeof(command), "%d;", (int) getpid());
+    int status = 0;
+    for (int i = 1; i < argc; i++) {
+        strcat(command, argv[i]);
+        strcat(command, " ");
     }
-    sleep(1); //FALTA ARRANJAR UMA FORMA DE VER SE O SERVIDOR CONSEGUIU CRIAR O FIFO OU O FORK
-
-    strcat(Server_Client_ID, str);
-    int fd_server_client_id = open(Server_Client_ID, O_RDONLY);
-    if (fd_server_client_id == -1) {
-        printf("Error accessing private Server_Client_FIFO.Server out of memory or Max users connected.\n");
-        return -1;
-    }
-
-    strcat(Client_Server_ID, str);
-    int fd_client_server_id = open(Client_Server_ID, O_WRONLY);
-    if (fd_client_server_id == -1) {
-        printf("Error accessing private Client_Server_FIFO.Server out of memory or Max users connected.\n");
-        return -1;
-    }
-
-    if (read(fd_server_client_id, read_id, sizeof(read_id)) < 0) {
-        perror("Erro na Leitura:"); //error check
-        exit(-1);
-    }
-    printf("\nServer Response: %s\n", read_id);
-
-    //Checking what the user wants to do
-
     if (argc <= 1) {
         printf("No argument provided");
         return -1;
     } else {
         if (strcmp(argv[1], "transform") == 0) {//argv[5][2]
-            char command[BUFSIZ];
-            memset(command, 0, sizeof(command));
-            for (int i = 1; argv[i]; i++) {
-                strcat(command, argv[i]);
-                strcat(command, " ");
-            }
-            printf("\n\n%s\n\n", command);
             if (argc < 5) {
                 printf("Not enough arguments in program call");
                 return -1;
             } else {
-                if (write(fd_client_server_id, command, sizeof(command)) < 0) {
-                    perror("Write Error:"); //error check
+                if (write(fd_client_server_main, command, sizeof(command)) < 0) {
+                    perror("Write:");//print error
                     exit(-1);
                 }
             }
@@ -79,13 +47,50 @@ int main(int argc, char **argv) {
                 printf("Too many arguments in program call");
                 return -1;
             } else {
-                if (write(fd_client_server_id, argv[1], sizeof(argv[1])) < 0) {
-                    perror("Write Error:"); //error check
+                status = 1;
+                if (write(fd_client_server_main, command, sizeof(command)) < 0) {
+                    perror("Write:");//print error
                     exit(-1);
                 }
+
             }
         }
     }
+
+    //FALTA ARRANJAR UMA FORMA DE VER SE O SERVIDOR CONSEGUIU CRIAR O FIFO OU O FORK
+    sleep(1);
+    char pid[10];
+    snprintf(pid, sizeof(pid), "%d", (int) getpid());
+    strcat(Server_Client_ID, pid);
+    int fd_server_client_id = open(Server_Client_ID, O_RDONLY);
+    if (fd_server_client_id == -1) {
+        printf("Error accessing private Server_Client_FIFO.Server out of memory or Max users connected.\n");
+        return -1;
+    }
+
+    strcat(Client_Server_ID, pid);
+    int fd_client_server_id = open(Client_Server_ID, O_WRONLY);
+    if (fd_client_server_id == -1) {
+        printf("Error accessing private Client_Server_FIFO.Server out of memory or Max users connected.\n");
+        return -1;
+    }
+    char read_id[40] = {0};
+    if (read(fd_server_client_id, read_id, sizeof(read_id)) < 0) {
+        perror("Erro na Leitura:"); //error check
+        exit(-1);
+    }
+    printf("\nServer Response: %s\n", read_id);
+
+    //Checking what the user wants to do
+    if (status == 1) {
+        char read_status[BUFSIZ] = {0};
+        if (read(fd_server_client_id, read_status, sizeof(read_status)) < 0) {
+            perror("Erro na Leitura:"); //error check
+            exit(-1);
+        }
+        printf("%s\n", read_status);
+    }
+
 
     close(fd_client_server_main);
     close(fd_server_client_id);
