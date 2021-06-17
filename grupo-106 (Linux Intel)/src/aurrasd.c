@@ -23,17 +23,7 @@ typedef struct espera {
     int filtros[tamanho_filtros_array];
     struct espera *prox;
 } *ESPERA;
-ESPERA main_queue;
-
-void print_espera() {
-    while (main_queue) {
-        printf("%d - %s\n", main_queue->pid, main_queue->comando);
-        main_queue = main_queue->prox;
-    }
-    for (int i = 0, u = 0; i < n_filtros; i++, u = u + 3) {
-        printf("filtro %s: %d/%d (running/max)\n", array_conf[u], filtros_em_uso[i], max_filters[i]);
-    }
-}
+ESPERA main_queue = NULL;
 
 int parse_string_to_string_array(char *string, char **str_array, char *delimit) {
     //Dar parse a uma string num array de char pointers.
@@ -46,22 +36,59 @@ int parse_string_to_string_array(char *string, char **str_array, char *delimit) 
     return n_words;
 }
 
+void print_espera() {
+    ESPERA b = main_queue;
+    while (b) {
+        printf("%d - %s\n", b->pid, b->comando);
+        b = b->prox;
+    }
+    for (int i = 0, u = 0; i < n_filtros; i++, u = u + 3) {
+        printf("filtro %s: %d/%d (running/max)\n", array_conf[u], filtros_em_uso[i], max_filters[i]);
+    }
+}
+
+ESPERA adiciona_cauda(char *pid, char *comando, char *filtros) {
+    ESPERA b = malloc(sizeof(struct espera));
+    b->pid = (pid_t) strtol(pid, NULL, 10);
+    strcpy(b->comando, comando);
+    char *fields_pipe_filtros[tamanho_filtros_array] = {0};
+    parse_string_to_string_array(filtros, fields_pipe_filtros, ",");
+    for (int i = 0; i < n_filtros; i++) {
+        b->filtros[i] = (int) strtol(fields_pipe_filtros[i], NULL, 10);
+    }
+    b->prox = NULL;
+    if (main_queue == NULL) main_queue = b;
+    else {
+        ESPERA a = main_queue;
+        while (a->prox != NULL) {
+            a = a->prox;
+        }
+        a->prox = b;
+    }
+    print_espera();
+    return main_queue;
+}
+
+
 void sigHandler(int signum) {
+    printf("SIGHANDLER\n");
     while (main_queue) {
         int filtro_cheio = 0;
         for (int i = 0; i < n_filtros; i++) {
             if (filtros_em_uso[i] + main_queue->filtros[i] > max_filters[i]) return;
         }
-
-        kill(main_queue->pid, SIGALRM);
+        printf("mandar signal ao pid %d\n", main_queue->pid);
+        kill(main_queue->pid, SIGUSR1);
+        ESPERA a = main_queue;
         main_queue = main_queue->prox;
-
+        free(a);
     }
     /* for (int i = 0; i < n_filtros; i++) {
          filtros_em_uso[i] += main_queue
      }*/
 }
 
+void sigsig() {}
 
 int main(int argc, char **argv) {
 
@@ -110,8 +137,6 @@ int main(int argc, char **argv) {
     int fd_client_server_main;
     fd_client_server_main = open(Client_Server_Main, O_RDONLY);
 
-    main_queue = malloc(sizeof(struct espera));
-    main_queue = NULL;
 
     int pipe_filho_main[2];
     if (pipe(pipe_filho_main) == -1) printf("Erro ao criar pipe");
@@ -140,16 +165,10 @@ int main(int argc, char **argv) {
                         printf("%d\n", filtros_em_uso[i]);
                     }
                 } else if (strcmp(buf, "status") != 0) {
-                    main_queue->pid = (pid_t) strtol(main_response[0], NULL, 10);
-                    strcpy(main_queue->comando, main_response[1]);
-                    char *fields_pipe_filtros[tamanho_filtros_array] = {0};
-                    parse_string_to_string_array(main_response[2], fields_pipe_filtros, ",");
-                    for (int i = 0; i < n_filtros; i++) {
-                        main_queue->filtros[i] = (int) strtol(fields_pipe_filtros[i], NULL, 10);
-                    }
-                    main_queue->prox = malloc(sizeof(struct espera));
-                    main_queue->prox = NULL;
-
+                    //printf("QUEUE ADD | PID = %s , COMANDO = %s , FILTROS = %s\n", main_response[0], main_response[1],
+                    //main_response[2]);
+                    adiciona_cauda(main_response[0], main_response[1], main_response[2]);
+                    //FALTA VER ISTO / FUNCAO DE ADICIONAR ELEMENTO A CAUDA
                 }
 
             } else {
@@ -245,8 +264,9 @@ int main(int argc, char **argv) {
                                         if (filtros_em_uso[i] + filtros_cliente[i] > max_filters[i]) continua = 0;
 
                                     }
+                                    printf("CONTINUA = %d\n", continua);
                                     if (continua == 0) {
-                                        char send_parent_string[100] = {0};
+                                        char send_parent_string[BUFSIZ] = {0};
                                         snprintf(send_parent_string, sizeof(send_parent_string), "%d", (int) getpid());
                                         strcat(send_parent_string, ";");
                                         strcat(send_parent_string, response_copy_for_pipe);
@@ -257,7 +277,10 @@ int main(int argc, char **argv) {
                                             strcat(send_parent_string, temp);
                                             strcat(send_parent_string, ",");
                                         }
-                                        write(fd_client_server_main, send_parent_string, sizeof(send_parent_string));
+                                        int queue_add = open(Client_Server_Main, O_WRONLY);
+                                        write(queue_add, send_parent_string,
+                                              sizeof(send_parent_string));
+                                        close(queue_add);
                                         pause();
                                         printf("OIOIOIOIOIO\n");
                                     }
